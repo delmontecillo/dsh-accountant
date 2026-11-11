@@ -1,0 +1,58 @@
+{
+  "name": "dsh-accountant",
+  "version": "0.1.0",
+  "description": "Accountant: token spend per day, week and month, priced as a predicted amount in US dollars and Philippine pesos.",
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg",
+    "./package.json": "./package.json"
+  },
+  "icon": "./icon.svg",
+  "files": [
+    "index.js",
+    "cordis.patch.yml",
+    "skills",
+    "locale/*.json",
+    "icon.svg",
+    "README.md",
+    "LICENSE"
+  ],
+  "keywords": [
+    "dsh",
+    "dsh-plugin",
+    "dsh-skill",
+    "skill",
+    "accountant",
+    "token-usage",
+    "cost-tracking",
+    "budget",
+    "php",
+    "usd"
+  ],
+  "license": "MIT",
+  "author": "Sean Montecillo <seanmontecillo@airalabs.ai>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/seanmontecillo-ece/dsh-accountant.git"
+  },
+  "homepage": "https://github.com/seanmontecillo-ece/dsh-accountant#readme",
+  "bugs": {
+    "url": "https://github.com/seanmontecillo-ece/dsh-accountant/issues"
+  },
+  "engines": {
+    "node": ">=22.15"
+  },
+  "scripts": {
+    "test": "node --test",
+    "report": "node skills/accountant/scripts/accountant.mjs"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
+}

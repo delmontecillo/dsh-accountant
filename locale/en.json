@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Accountant",
+    "description": "Counts your token use per day, week and month, and prices it as a predicted amount in US dollars and Philippine pesos."
+  }
+}
