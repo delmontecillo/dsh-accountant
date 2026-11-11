@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
+import { registerSpendRoute } from './host/spend-route.mjs'
 
 /**
  * Skill provider for `accountant`.
@@ -94,7 +95,18 @@ export const name = 'accountant'
 /** Service required by the provider. */
 export const inject = ['skills']
 
-/** Register the bundled `accountant` provider on `ctx.skills`. */
+/**
+ * Register the bundled `accountant` provider on `ctx.skills`, and, when a Web
+ * server is composed, the read-only endpoint the header readout polls.
+ */
 export function apply(ctx) {
   ctx.skills.registerProvider(() => provider)
+
+  // `webServer` is not in `inject` above: it only exists in a browser-facing
+  // profile, and requiring it would leave the skill pending in a headless one.
+  // A deferred inject scope activates only where the service actually mounts.
+  if (typeof ctx.inject !== 'function') return
+  ctx.inject(['webServer'], (scope) => {
+    scope.effect(() => registerSpendRoute(scope), 'accountant: spend route')
+  })
 }

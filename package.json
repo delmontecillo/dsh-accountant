@@ -1,11 +1,12 @@
 {
   "name": "dsh-accountant",
-  "version": "0.1.0",
-  "description": "Accountant: token spend per day, week and month, priced as a predicted amount in US dollars and Philippine pesos.",
+  "version": "0.2.0",
+  "description": "Accountant: token spend per day, week and month, priced as a predicted amount in US dollars and Philippine pesos, in the CLI and in the Session header.",
   "type": "module",
   "main": "index.js",
   "exports": {
     ".": "./index.js",
+    "./client": "./client.js",
     "./cordis.patch.yml": "./cordis.patch.yml",
     "./locale/*.json": "./locale/*.json",
     "./icon": "./icon.svg",
@@ -14,7 +15,9 @@
   "icon": "./icon.svg",
   "files": [
     "index.js",
+    "client.js",
     "cordis.patch.yml",
+    "host",
     "skills",
     "locale/*.json",
     "icon.svg",
@@ -53,6 +56,13 @@
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-conversation"
+      ]
     }
   }
 }

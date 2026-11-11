@@ -34,6 +34,40 @@ Nothing is estimated from file size or character count. The numbers come from
 the provider's own `usage` payload on every recorded model call, priced at the
 tariff that applied at that call's hour.
 
+## In the app
+
+The Session header carries a live readout in its right-hand utilities seat —
+the same row as the mode switch, above the Chat/Trajectory tabs:
+
+```
+  Accountant token usage plugin          ₱118.47 today   ⬤ Standard mode
+  Chat   Trajectory   ⋯
+```
+
+Click it for the day, week, and month figures in both currencies, plus the
+predicted month end:
+
+```
+┌───────────────────────────────────┐
+│ Token spend          Asia/Manila  │
+│ Today · 11-11            ₱118.47  │
+│ $1.91 · 215.5M tokens             │
+│ Week · 2026-W46        ₱1,070.20  │
+│ $17.26 · 1770.2M tokens           │
+│ Month · 2026-11        ₱1,529.67  │
+│ $24.67 · 2535.1M tokens           │
+│ Predicted month end · 30 days     │
+│                        ₱4,171.83  │
+│ Estimate · ₱62.00 per USD · 339 sessions │
+└───────────────────────────────────┘
+```
+
+It polls once a minute, refreshes when opened, and shows `—` rather than a
+guess when the host is not answering. It reads a read-only, loopback-only
+`GET /accountant/spend` route, so the browser can never write anything through
+it. The route uses the same library as the CLI, so the widget and the command
+line cannot drift apart.
+
 ## Install
 
 ### From GitHub
@@ -141,6 +175,8 @@ The total is a floor, not an invoice.
 
 ```
 index.js                       skill provider registered on ctx.skills
+client.js                      the Session-header readout (browser bundle)
+host/spend-route.mjs           the read-only GET /accountant/spend route
 cordis.patch.yml               inserts the provider row into the profile
 skills/accountant/
   SKILL.md                     the skill body
@@ -153,9 +189,10 @@ skills/accountant/
     pricing.mjs                rate table, peak logic, USD→PHP
     session-store.mjs          zstd frame decoding, scanning, cache
     aggregate.mjs              day/week/month rollups and forecasts
+    calendar.mjs               timezone-aware date arithmetic
     report.mjs                 text, Markdown, CSV, JSON
     config.mjs                 flags, config file, precedence
-tests/                         node:test suite
+tests/                         node:test suite, including a client harness
 locale/en.json                 plugin title and description
 icon.svg                       plugin icon
 ```
