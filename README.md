@@ -40,7 +40,7 @@ The Session header carries a live readout in its right-hand utilities seat —
 the same row as the mode switch, above the Chat/Trajectory tabs:
 
 ```
-  Accountant token usage plugin          ₱118.47 today   ⬤ Standard mode
+  Accountant token usage plugin        $1.99 · ₱123.56   ⬤ Standard mode
   Chat   Trajectory   ⋯
 ```
 

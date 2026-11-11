@@ -46,11 +46,11 @@ Add `--limit <n>` to change how many rows print. Defaults are 7 days, 6 weeks,
 
 ## It also runs in the header
 
-The Session header shows the same numbers without a command: a peso chip in
-the right-hand utilities seat (the row with the mode switch, above the Chat and
-Trajectory tabs), reading **₱ today**. Clicking it opens the day, week, and
-month figures in both currencies, plus the predicted month end. It refreshes
-every minute.
+The Session header shows the same numbers without a command: a chip in the
+right-hand utilities seat (the row with the mode switch, above the Chat and
+Trajectory tabs), reading **$ today · ₱ today**. Clicking it opens the day,
+week, and month figures in both currencies, plus the predicted month end. It
+refreshes every minute.
 
 So when the user asks "where do I see this", point at that chip. The chip reads
 a read-only `GET /accountant/spend` route served by this plugin and priced with

@@ -33,7 +33,8 @@ window.__ModuleLoader__.load({
       .acc-spend__dot[data-state='stale'] { background: #9aa4b2; box-shadow: none; }
 
       .acc-spend__value { font-variant-numeric: tabular-nums; }
-      .acc-spend__label { color: var(--dsw-alias-label-tertiary, currentColor); opacity: 0.72; font-weight: 500; }
+      .acc-spend__sep { opacity: 0.4; }
+      .acc-spend__php { font-variant-numeric: tabular-nums; opacity: 0.72; font-weight: 500; }
 
       .acc-spend__pop {
         position: absolute; top: calc(100% + 8px); right: 0; z-index: 40;
@@ -197,10 +198,10 @@ window.__ModuleLoader__.load({
 
       const data = state.data;
       const stale = state.status === 'error';
-      const todayPhp = data && data.today ? peso(data.today.php) : '—';
+      const ready = data !== null && data.today !== undefined;
 
-      const summary = data
-        ? `Today ${peso(data.today.php)} · Week ${peso(data.week.php)} · Month ${peso(data.month.php)} · predicted month end ${peso(data.month.forecast.php)}`
+      const summary = ready
+        ? `Today ${dollars(data.today.usd)} · ${peso(data.today.php)} · Week ${peso(data.week.php)} · Month ${peso(data.month.php)} · predicted month end ${peso(data.month.forecast.php)}`
         : stale
           ? 'Accountant: no data from the accounting endpoint'
           : 'Accountant: reading token spend';
@@ -223,8 +224,15 @@ window.__ModuleLoader__.load({
             },
           },
           h('span', { className: 'acc-spend__dot', 'data-state': stale ? 'stale' : 'live', 'aria-hidden': true }),
-          h('span', { className: 'acc-spend__value' }, todayPhp),
-          h('span', { className: 'acc-spend__label' }, 'today'),
+          ready
+            ? h(
+                React.Fragment,
+                null,
+                h('span', { className: 'acc-spend__value' }, dollars(data.today.usd)),
+                h('span', { className: 'acc-spend__sep', 'aria-hidden': true }, '·'),
+                h('span', { className: 'acc-spend__php' }, peso(data.today.php)),
+              )
+            : h('span', { className: 'acc-spend__value' }, '—'),
         ),
         open ? h(Popover, { data, stale }) : null,
       );

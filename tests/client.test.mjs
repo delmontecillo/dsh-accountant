@@ -181,15 +181,15 @@ test('the chip fetches the host endpoint same-origin, uncached', async () => {
   assert.equal(calls[0].init.cache, 'no-store')
 })
 
-test('the chip shows today in pesos after the first fetch', async () => {
+test('the chip shows today in both currencies after the first fetch', async () => {
   const { render } = await loadBundle({ payload: PAYLOAD })
   const loading = await render()
   assert.match(textOf(loading), /—/)
 
   const loaded = await render()
   const text = textOf(loaded)
+  assert.match(text, /\$1\.91/)
   assert.match(text, /₱118\.47/)
-  assert.match(text, /today/)
 })
 
 test('opening the chip reveals the week, the month, and the forecast', async () => {
