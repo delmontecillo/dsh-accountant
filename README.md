@@ -75,14 +75,14 @@ line cannot drift apart.
 In the Harness Web UI, open **Plugins**, choose **Install bundle**, and paste:
 
 ```
-github:seanmontecillo-ece/dsh-accountant
+github:delmontecillo/dsh-accountant
 ```
 
 Or, for an agent driving `plugin_manager`:
 
 ```
 action: install_bundle
-target: github:seanmontecillo-ece/dsh-accountant
+target: github:delmontecillo/dsh-accountant
 ```
 
 No build step and no dependencies: the repository root is the package.

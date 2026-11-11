@@ -4,6 +4,7 @@
   "description": "Accountant: token spend per day, week and month, priced as a predicted amount in US dollars and Philippine pesos, in the CLI and in the Session header.",
   "type": "module",
   "main": "index.js",
+  "icon": "./icon.svg",
   "exports": {
     ".": "./index.js",
     "./client": "./client.js",
@@ -12,7 +13,6 @@
     "./icon": "./icon.svg",
     "./package.json": "./package.json"
   },
-  "icon": "./icon.svg",
   "files": [
     "index.js",
     "client.js",
@@ -40,11 +40,11 @@
   "author": "Sean Montecillo <seanmontecillo@airalabs.ai>",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/seanmontecillo-ece/dsh-accountant.git"
+    "url": "git+https://github.com/delmontecillo/dsh-accountant.git"
   },
-  "homepage": "https://github.com/seanmontecillo-ece/dsh-accountant#readme",
+  "homepage": "https://github.com/delmontecillo/dsh-accountant#readme",
   "bugs": {
-    "url": "https://github.com/seanmontecillo-ece/dsh-accountant/issues"
+    "url": "https://github.com/delmontecillo/dsh-accountant/issues"
   },
   "engines": {
     "node": ">=22.15"
