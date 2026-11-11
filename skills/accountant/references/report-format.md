@@ -14,6 +14,8 @@ Source    C:\Users\admin\.dsh\sessions
 Coverage  339 sessions · 2026-09-10 → 2026-11-11 · Asia/Manila
 Prices    pricing as of 2026-11-11 · peak/off-peak by UTC hour · USD→PHP 62.00 (2026-11-11)
 Scan      1 parsed, 338 cached, 0 unreadable, 80ms
+Key       2c900c644833 · DSH credential store · counted since 2026-11-11 15:00
+Key spend 1.4M tokens · $0.63 · ₱39.06 · 22 requests
 
 Now
        period                     tokens     USD        PHP  requests
@@ -26,6 +28,13 @@ Month  2026-11                   2523.0M  $24.59  ₱1,524.41     9,442
 Three sections, in this order: **Now** (actual), **Predicted** (run rate), then
 the per-period table. The optional `Scan` line appears only when a run reused
 or failed to read something.
+
+`Key` names the DeepSeek key the usage is billed to — its fingerprint, where the
+key was read from, and the hour attribution started. `Key spend` is the usage
+inside that key's window, which is not the same as `Today`: the window starts at
+a whole UTC hour and does not claim earlier usage. When more than one key has
+been seen, a `Per key` table follows `Predicted`. With no key configured the
+line says so instead.
 
 `Coverage` is the count of sessions that contributed, not a date range of
 interest. A session with no recorded usage still appears here.
@@ -74,7 +83,18 @@ falls back to day rows in CSV; a single file cannot hold three shapes.
   "weeks":  [ { "key": "", "from": "", "to": "", "tokens": {}, "usd": 0, "php": 0, "dayCount": 0 } ],
   "months": [ { "key": "", "from": "", "to": "", "tokens": {}, "usd": 0, "php": 0, "dayCount": 0 } ],
   "models": [ { "model": "deepseek-flash", "tokens": {}, "usd": 0, "php": 0, "requests": 0 } ],
-  "unknownModels": []
+  "unknownModels": [],
+  "key": {
+    "fingerprint": "2c900c644833",
+    "source": "store",
+    "since": "2026-11-11T07:00:00.000Z",
+    "totals": { "tokens": {}, "usd": 0.63, "php": 39.06, "requests": 22 },
+    "summary": {
+      "today": {}, "week": {}, "month": {},
+      "forecast": {}, "elapsedDays": 1
+    },
+    "keys": [ { "fingerprint": "2c900c644833", "since": "2026-11-11T07:00:00.000Z", "totals": {} } ]
+  }
 }
 ```
 
@@ -82,6 +102,13 @@ Every `tokens` object has `input`, `cacheRead`, `cacheWrite`, `output`,
 `total`. `days` holds only days with recorded usage — absent days are absent,
 not zero rows. `weeks` uses ISO weeks, so a week that straddles a year boundary
 belongs to the year of its Thursday.
+
+`key` is `null` when no DeepSeek key is configured. `since` is when the current
+key's window opens, `totals` covers only that window, and `keys` lists every
+fingerprint seen so far in order. `summary` repeats that window as today, week,
+and month with a month-end forecast at the key's own daily rate; it is what the
+header panel renders. `elapsedDays` is the number of days the key has existed
+for that projection, not the days of the month.
 
 `models` inside a day is a list of per-model entries for that day; top-level
 `models` is the range-wide version, sorted by cost.

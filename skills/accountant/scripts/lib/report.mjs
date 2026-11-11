@@ -6,6 +6,19 @@
  */
 
 import { MODEL_LABELS, PRICING_AS_OF } from './pricing.mjs'
+import { zonedParts } from './calendar.mjs'
+
+/** `YYYY-MM-DD HH:mm` in the report's timezone. */
+function localMoment(ms, tz) {
+  const parts = zonedParts(ms, tz)
+  const hour = String(parts.hour).padStart(2, '0')
+  const minute = String(parts.minute).padStart(2, '0')
+  return `${parts.date} ${hour}:${minute}`
+}
+
+function keySourceLabel(source) {
+  return source === 'env' ? 'launch environment' : 'DSH credential store'
+}
 
 /** Compact token count: `987`, `12.3K`, `1.24M`. */
 export function fmtTokens(value) {
@@ -73,6 +86,31 @@ function monthRow(month) {
   return [month.key, fmtInt(month.dayCount), fmtTokens(month.tokens.total), fmtUsd(month.usd), fmtPhp(month.php)]
 }
 
+/** Serialisable view of the active key and the keys seen before it. */
+function plainKey(key) {
+  const iso = (ms) => (Number.isFinite(ms) ? new Date(ms).toISOString() : null)
+  return {
+    fingerprint: key.fingerprint,
+    source: key.source,
+    since: iso(key.since),
+    totals: key.totals,
+    summary: key.summary
+      ? {
+          today: key.summary.today,
+          week: key.summary.week,
+          month: key.summary.month,
+          forecast: key.summary.forecast,
+          elapsedDays: key.summary.elapsedDays,
+        }
+      : null,
+    keys: key.keys.map((entry) => ({
+      fingerprint: entry.fingerprint,
+      since: iso(entry.since),
+      totals: entry.totals,
+    })),
+  }
+}
+
 /** Serialisable view of the report model: Sets and Maps become counts and arrays. */
 export function toJson(model) {
   const plainDay = (day) => ({
@@ -109,6 +147,7 @@ export function toJson(model) {
     months: model.months.map(plainBucket),
     models: model.models,
     unknownModels: model.unknownModels,
+    key: model.key === null || model.key === undefined ? null : plainKey(model.key),
   }
 }
 
@@ -132,6 +171,13 @@ export function renderText(model, meta = {}) {
   lines.push(`Prices    pricing as of ${PRICING_AS_OF} · peak/off-peak by UTC hour · USD→PHP ${fx.rate.toFixed(2)} (${fx.asOf})`)
   if (stats && (stats.failed > 0 || stats.reused > 0)) {
     lines.push(`Scan      ${fmtInt(stats.scanned)} parsed, ${fmtInt(stats.reused)} cached, ${fmtInt(stats.failed)} unreadable, ${fmtInt(stats.ms)}ms`)
+  }
+  if (model.key) {
+    const key = model.key
+    lines.push(`Key       ${key.fingerprint} · ${keySourceLabel(key.source)} · counted since ${localMoment(key.since, model.tz)}`)
+    lines.push(`Key spend ${fmtTokens(key.totals.tokens.total)} tokens · ${fmtUsd(key.totals.usd)} · ${fmtPhp(key.totals.php)} · ${fmtInt(key.totals.requests)} requests`)
+  } else {
+    lines.push('Key       not found — save DEEPSEEK_API_KEY in the DSH credential store')
   }
   lines.push('')
 
@@ -158,6 +204,22 @@ export function renderText(model, meta = {}) {
     ['left', 'right', 'right', 'right'],
   ))
   lines.push('')
+
+  if (model.key && model.key.keys.length > 1) {
+    lines.push('Per key')
+    lines.push(table(
+      ['key', 'since', 'tokens', 'USD', 'PHP'],
+      model.key.keys.map((entry) => [
+        entry.fingerprint,
+        localMoment(entry.since, model.tz),
+        fmtTokens(entry.totals.tokens.total),
+        fmtUsd(entry.totals.usd),
+        fmtPhp(entry.totals.php),
+      ]),
+      ['left', 'left', 'right', 'right', 'right'],
+    ))
+    lines.push('')
+  }
 
   if (byModel && model.models.length > 0) {
     lines.push('By model')
@@ -222,6 +284,10 @@ export function renderMarkdown(model, meta = {}) {
   md.push(`- **Coverage:** ${fmtInt(coverage.sessions)} sessions, ${coverage.firstDate ?? '—'} → ${coverage.lastDate ?? '—'} (${model.tz})`)
   md.push(`- **USD→PHP:** ${fx.rate.toFixed(2)} as of ${fx.asOf}`)
   md.push(`- **Prices:** DeepSeek list prices as of ${PRICING_AS_OF}, peak and off-peak`)
+  if (model.key) {
+    md.push(`- **Key:** ${model.key.fingerprint} (${keySourceLabel(model.key.source)}), counted since ${localMoment(model.key.since, model.tz)}`)
+    md.push(`- **Key spend:** ${fmtTokens(model.key.totals.tokens.total)} tokens, ${fmtUsd(model.key.totals.usd)}, ${fmtPhp(model.key.totals.php)}`)
+  }
   md.push('')
   md.push('## Now')
   md.push(mdTable(['Period', 'Tokens', 'USD', 'PHP'], [
@@ -237,6 +303,18 @@ export function renderMarkdown(model, meta = {}) {
     ['Next 30 days', fmtTokens(summary.trailing.next30.tokens.total), fmtUsd(summary.trailing.next30.usd), fmtPhp(summary.trailing.next30.php)],
   ]))
   md.push('')
+
+  if (model.key && model.key.keys.length > 1) {
+    md.push('## Keys')
+    md.push(mdTable(['Key', 'Since', 'Tokens', 'USD', 'PHP'], model.key.keys.map((entry) => [
+      entry.fingerprint,
+      localMoment(entry.since, model.tz),
+      fmtTokens(entry.totals.tokens.total),
+      fmtUsd(entry.totals.usd),
+      fmtPhp(entry.totals.php),
+    ])))
+    md.push('')
+  }
 
   if (byModel && model.models.length > 0) {
     md.push('## By model')

@@ -8,7 +8,7 @@ import {
   isoWeekday,
   localDate,
 } from '../skills/accountant/scripts/lib/calendar.mjs'
-import { buildDays, filterRange, summarize } from '../skills/accountant/scripts/lib/aggregate.mjs'
+import { buildDays, filterRange, summarize, windowTotals } from '../skills/accountant/scripts/lib/aggregate.mjs'
 
 function bucket({ input = 0, cacheRead = 0, cacheWrite = 0, output = 0, requests = 1 } = {}) {
   return { input, cacheRead, cacheWrite, output, requests }
@@ -149,4 +149,24 @@ test('an empty store reports zeros instead of throwing', () => {
   assert.equal(model.totals.usd, 0)
   assert.equal(model.summary.month.forecast.usd, 0)
   assert.equal(model.coverage.firstDate, null)
+})
+
+test('a key window counts only the buckets inside it', () => {
+  const files = [sessionFile({
+    '2026-11-11': {
+      6: { 'deepseek-official/deepseek-flash': bucket({ input: 1_000_000 }) },
+      7: { 'deepseek-official/deepseek-flash': bucket({ input: 2_000_000 }) },
+    },
+  })]
+
+  const window = windowTotals(files, {
+    tz: 'UTC',
+    fxRate: 62,
+    fromMs: Date.parse('2026-11-11T07:00:00Z'),
+    toMs: Date.parse('2026-11-11T08:00:00Z'),
+  })
+
+  assert.equal(window.tokens.total, 2_000_000)
+  assert.equal(window.requests, 1)
+  assert.equal(window.days, 1)
 })

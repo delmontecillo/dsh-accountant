@@ -92,3 +92,41 @@ test('json output serialises sets and maps to plain values', () => {
   assert.equal(json.pricingAsOf, '2026-11-11')
   assert.equal(json.coverage.sessions, 1)
 })
+
+test('a tracked key renders as its own line and keeps its window in JSON', () => {
+  const model = modelFixture()
+  const since = Date.parse('2026-11-11T07:00:00Z')
+  model.key = {
+    fingerprint: '2c900c644833',
+    source: 'store',
+    since,
+    totals: {
+      tokens: { input: 0, cacheRead: 0, cacheWrite: 0, output: 0, total: 1_500_000 },
+      usd: 0.45,
+      php: 27.9,
+      requests: 2,
+      days: 1,
+    },
+    keys: [{
+      fingerprint: '2c900c644833',
+      since,
+      totals: {
+        tokens: { input: 0, cacheRead: 0, cacheWrite: 0, output: 0, total: 1_500_000 },
+        usd: 0.45,
+        php: 27.9,
+        requests: 2,
+        days: 1,
+      },
+    }],
+  }
+
+  const text = renderText(model, { group: 'day' })
+  assert.match(text, /Key\s+2c900c644833/)
+  assert.match(text, /Key spend/)
+  assert.match(text, /₱27\.90/)
+
+  const json = toJson(model)
+  assert.equal(json.key.fingerprint, '2c900c644833')
+  assert.equal(json.key.since, '2026-11-11T07:00:00.000Z')
+  assert.equal(json.key.totals.php, 27.9)
+})

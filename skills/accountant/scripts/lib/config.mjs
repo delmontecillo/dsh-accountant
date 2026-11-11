@@ -41,6 +41,12 @@ Options
 Environment
   DSH_HOME, DSH_ACCOUNTANT_TZ, DSH_ACCOUNTANT_RATE
 
+Key tracking
+  The report names the DeepSeek key DSH is spending on: the launch
+  environment's DEEPSEEK_API_KEY, else the credential store. Only a
+  12-character fingerprint is kept, in <dataDir>/accountant.keys.json.
+  A key's window opens at the whole UTC hour after it is first seen.
+
 Config file
   <dataDir>/accountant.config.json
   { "tz": "Asia/Manila", "rate": 62.0, "fxAsOf": "2026-11-11",

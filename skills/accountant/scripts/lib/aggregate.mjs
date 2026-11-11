@@ -42,6 +42,8 @@ export function buildDays(files, options = {}) {
     rates = PEAK_RATES,
     holidays = DEFAULT_HOLIDAYS,
     fxRate = DEFAULT_FX.rate,
+    fromMs,
+    toMs,
   } = options
 
   const days = new Map()
@@ -53,6 +55,8 @@ export function buildDays(files, options = {}) {
       for (const [hourText, models] of Object.entries(hours)) {
         const hour = Number(hourText)
         const ms = dayStart + hour * HOUR_MS
+        if (fromMs !== undefined && ms < fromMs) continue
+        if (toMs !== undefined && ms >= toMs) continue
         const date = localDate(ms, tz)
         const peak = isPeakUtc(utcDay, hour, holidays)
 
@@ -127,7 +131,7 @@ function emptyTotal() {
   return { tokens: { input: 0, cacheRead: 0, cacheWrite: 0, output: 0, total: 0 }, usd: 0, php: 0, requests: 0 }
 }
 
-function totalOf(days) {
+export function totalOf(days) {
   const total = emptyTotal()
   for (const day of days) {
     addTokens(total.tokens, day.tokens)
@@ -136,6 +140,12 @@ function totalOf(days) {
     total.requests += day.requests
   }
   return total
+}
+
+/** Totals for the usage buckets inside `[fromMs, toMs)`. */
+export function windowTotals(files, options = {}) {
+  const { days } = buildDays(files, options)
+  return { ...totalOf(days), days: days.length }
 }
 
 function project(total, elapsed, span) {

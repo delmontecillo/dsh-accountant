@@ -18,6 +18,7 @@ import { UsageError, USAGE, loadConfig, parseArgs, resolveSettings } from './lib
 import { DEFAULT_HOLIDAYS, PEAK_RATES } from './lib/pricing.mjs'
 import { clearCache, collectUsage, defaultCachePath, resolveDataDir } from './lib/session-store.mjs'
 import { summarize } from './lib/aggregate.mjs'
+import { attachKeyUsage } from './lib/api-key.mjs'
 import { renderCsv, renderMarkdown, renderText, toJson } from './lib/report.mjs'
 
 async function packageVersion() {
@@ -74,14 +75,24 @@ async function main(argv) {
     useCache: settings.useCache,
   })
 
+  const rates = mergeRates(settings.rates)
   const model = summarize(files, {
     tz: settings.tz,
     nowMs: settings.nowMs,
     since: settings.since,
     until: settings.until,
     fx: settings.fx,
-    rates: mergeRates(settings.rates),
+    rates,
     holidays: settings.holidays ?? DEFAULT_HOLIDAYS,
+  })
+
+  await attachKeyUsage(model, files, {
+    dataDir: settings.dataDir,
+    nowMs: settings.nowMs,
+    tz: settings.tz,
+    rates,
+    holidays: settings.holidays ?? DEFAULT_HOLIDAYS,
+    fx: settings.fx,
   })
 
   const meta = {

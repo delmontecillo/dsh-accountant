@@ -226,3 +226,47 @@ test('an unreachable endpoint shows a dash, never a made-up number', async () =>
   const button = find(tree, (node) => node.type === 'button')
   assert.match(button.props.title, /no data/)
 })
+
+test('the popover names the tracked key when the host reports one', async () => {
+  const payload = {
+    ...PAYLOAD,
+    key: {
+      fingerprint: '2c900c644833',
+      source: 'store',
+      since: '2026-11-11T07:00:00.000Z',
+      totals: { tokens: 2_000_000, usd: 0.6, php: 37.2, requests: 3 },
+      summary: {
+        today: { tokens: 1_500_000, usd: 0.45, php: 27.9, requests: 2 },
+        week: { tokens: 1_800_000, usd: 0.54, php: 33.48, requests: 3 },
+        month: { tokens: 1_900_000, usd: 0.57, php: 35.34, requests: 4 },
+        forecast: { tokens: 30_000_000, usd: 9, php: 558, requests: 40 },
+        daysInMonth: 30,
+      },
+    },
+  }
+  const { render } = await loadBundle({ payload })
+  await render()
+  const loaded = await render()
+
+  // The chip reads the key's spend today, not the whole day's.
+  const chip = textOf(loaded)
+  assert.match(chip, /\$0\.45/)
+  assert.match(chip, /₱27\.90/)
+  assert.doesNotMatch(chip, /\$1\.91/)
+
+  const button = find(loaded, (node) => node.type === 'button')
+  button.props.onClick()
+  const text = textOf(await render())
+
+  assert.match(text, /Today · 11-11/)
+  assert.match(text, /₱27\.90/)
+  assert.match(text, /Week · 2026-W46/)
+  assert.match(text, /₱33\.48/)
+  assert.match(text, /Month · 2026-11/)
+  assert.match(text, /₱35\.34/)
+  assert.match(text, /Predicted month end · 30 days/)
+  assert.match(text, /₱558\.00/)
+  assert.doesNotMatch(text, /₱1,529\.67/)
+  assert.doesNotMatch(text, /₱4,171\.83/)
+  assert.match(text, /key 2c900c64…/)
+})

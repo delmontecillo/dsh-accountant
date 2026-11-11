@@ -14,6 +14,8 @@ Accountant · token spend
 
 Coverage  339 sessions · 2026-09-10 → 2026-11-11 · Asia/Manila
 Prices    pricing as of 2026-11-11 · peak/off-peak by UTC hour · USD→PHP 62.00 (2026-11-11)
+Key       2c900c644833 · DSH credential store · counted since 2026-11-11 15:00
+Key spend 1.4M tokens · $0.63 · ₱39.06 · 22 requests
 
 Now
        period                     tokens     USD        PHP  requests
@@ -44,29 +46,60 @@ the same row as the mode switch, above the Chat/Trajectory tabs:
   Chat   Trajectory   ⋯
 ```
 
-Click it for the day, week, and month figures in both currencies, plus the
-predicted month end:
+The chip reads the tracked key's spend — the active DeepSeek key's total since
+its window opened — and falls back to today's overall spend when no key is
+configured. Its tooltip carries the fingerprint, the window start, and today's
+overall figures for comparison.
+
+Click it for this key's today, week, and month figures in both currencies, plus
+its predicted month end:
 
 ```
 ┌───────────────────────────────────┐
 │ Token spend          Asia/Manila  │
-│ Today · 11-11            ₱118.47  │
-│ $1.91 · 215.5M tokens             │
-│ Week · 2026-W46        ₱1,070.20  │
-│ $17.26 · 1770.2M tokens           │
-│ Month · 2026-11        ₱1,529.67  │
-│ $24.67 · 2535.1M tokens           │
+│ Today · 11-11             ₱27.90  │
+│ $0.45 · 1.5M tokens               │
+│ Week · 2026-W46           ₱33.48  │
+│ $0.54 · 1.8M tokens               │
+│ Month · 2026-11           ₱35.34  │
+│ $0.57 · 1.9M tokens               │
 │ Predicted month end · 30 days     │
-│                        ₱4,171.83  │
-│ Estimate · ₱62.00 per USD · 339 sessions │
+│                          ₱558.00  │
+│ $9.00 · 30.0M tokens              │
+│ Estimate · ₱62.00 per USD · 339 sessions · key 2c900c64… │
 └───────────────────────────────────┘
 ```
+
+Those rows are the key's, not the machine's: Today, Week, Month, and the
+predicted month end are all scoped to the active key's window. With no key
+configured, the panel falls back to all recorded usage.
 
 It polls once a minute, refreshes when opened, and shows `—` rather than a
 guess when the host is not answering. It reads a read-only, loopback-only
 `GET /accountant/spend` route, so the browser can never write anything through
 it. The route uses the same library as the CLI, so the widget and the command
 line cannot drift apart.
+
+## Which key it tracks
+
+The numbers are DSH's usage, and DSH spends on one DeepSeek key at a time. The
+report says which one. The key is resolved the way DSH resolves it — the launch
+environment first, then `<DSH_HOME>/.credentials.yaml` — and only a 12-character
+SHA-256 fingerprint of it is kept, never the key.
+
+The first sighting of a fingerprint opens a usage window; rotating the key
+freezes that window and starts another. Usage from before a key existed is never
+claimed as that key's, so the day/week/month tables keep the full history while
+the key line starts where the key did. Cached usage is hourly, so a key set at
+14:51 counts from 15:00.
+
+The timeline lives in `<DSH_HOME>/accountant.keys.json` — fingerprints and
+first-seen times only. Delete it to restart attribution from the next run.
+
+The header panel's today, week, month, and predicted month end are scoped to
+this window too; its prediction projects the key's own daily rate from the days
+it has existed. The CLI keeps the overall tables and adds the key lines, so it
+is still the place to ask what the whole machine spent.
 
 ## Install
 
@@ -154,7 +187,9 @@ Stated plainly, because a spend report that overclaims is worse than no report:
 
 - Session-title and compaction calls record no usage, so they are not counted.
 - Search and Fetch are billed per request, not per token, and are excluded.
-- Usage on the same API key outside DSH is invisible.
+- Usage on the same API key outside DSH is invisible. With a key dedicated to
+  DSH, the key line is that key's entire spend; with a shared key, it is DSH's
+  share only.
 - A session still being written is picked up on the next run.
 
 The total is a floor, not an invoice.
@@ -188,6 +223,7 @@ skills/accountant/
   scripts/lib/
     pricing.mjs                rate table, peak logic, USD→PHP
     session-store.mjs          zstd frame decoding, scanning, cache
+    api-key.mjs                key fingerprint, timeline, per-key windows
     aggregate.mjs              day/week/month rollups and forecasts
     calendar.mjs               timezone-aware date arithmetic
     report.mjs                 text, Markdown, CSV, JSON

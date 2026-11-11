@@ -106,6 +106,11 @@ window.__ModuleLoader__.load({
       const month = data !== null && data.month ? data.month : null;
       const week = data !== null && data.week ? data.week : null;
       const today = data !== null && data.today ? data.today : null;
+      const scoped = data !== null && data.key && data.key.summary ? data.key.summary : null;
+      const todayBucket = scoped ? scoped.today : today;
+      const weekBucket = scoped ? scoped.week : week;
+      const monthBucket = scoped ? scoped.month : month;
+      const forecastBucket = scoped ? scoped.forecast : month ? month.forecast : null;
 
       return h(
         'div',
@@ -124,9 +129,9 @@ window.__ModuleLoader__.load({
           : h(
               React.Fragment,
               null,
-              h(Row, { label: today ? `Today · ${today.date.slice(5)}` : 'Today', bucket: today }),
-              h(Row, { label: week ? `Week · ${week.key}` : 'Week', bucket: week }),
-              h(Row, { label: month ? `Month · ${month.key}` : 'Month', bucket: month }),
+              h(Row, { label: today ? `Today · ${today.date.slice(5)}` : 'Today', bucket: todayBucket }),
+              h(Row, { label: week ? `Week · ${week.key}` : 'Week', bucket: weekBucket }),
+              h(Row, { label: month ? `Month · ${month.key}` : 'Month', bucket: monthBucket }),
 
               month
                 ? h(
@@ -134,7 +139,7 @@ window.__ModuleLoader__.load({
                     { className: 'acc-spend__predicted' },
                     h(Row, {
                       label: `Predicted month end · ${month.daysInMonth} days`,
-                      bucket: month.forecast,
+                      bucket: forecastBucket,
                     }),
                   )
                 : null,
@@ -142,7 +147,7 @@ window.__ModuleLoader__.load({
               h(
                 'div',
                 { className: 'acc-spend__foot' },
-                `Estimate · ₱${Number(data.fx.rate).toFixed(2)} per USD · ${data.coverage.sessions} sessions`,
+                `Estimate · ₱${Number(data.fx.rate).toFixed(2)} per USD · ${data.coverage.sessions} sessions${data.key ? ` · key ${data.key.fingerprint.slice(0, 8)}…` : ''}`,
               ),
             ),
       );
@@ -199,9 +204,15 @@ window.__ModuleLoader__.load({
       const data = state.data;
       const stale = state.status === 'error';
       const ready = data !== null && data.today !== undefined;
+      const keyBucket = ready && data.key
+        ? data.key.summary ? data.key.summary.today : data.key.totals
+        : null;
+      const shown = keyBucket ?? (ready ? data.today : null);
 
       const summary = ready
-        ? `Today ${dollars(data.today.usd)} · ${peso(data.today.php)} · Week ${peso(data.week.php)} · Month ${peso(data.month.php)} · predicted month end ${peso(data.month.forecast.php)}`
+        ? keyBucket
+          ? `This key · today ${dollars(keyBucket.usd)} · ${peso(keyBucket.php)}${data.key.summary ? ` · week ${peso(data.key.summary.week.php)} · month ${peso(data.key.summary.month.php)}` : ''} · all today ${dollars(data.today.usd)} · ${peso(data.today.php)}`
+          : `Today ${dollars(data.today.usd)} · ${peso(data.today.php)} · Week ${peso(data.week.php)} · Month ${peso(data.month.php)} · predicted month end ${peso(data.month.forecast.php)}`
         : stale
           ? 'Accountant: no data from the accounting endpoint'
           : 'Accountant: reading token spend';
@@ -224,13 +235,13 @@ window.__ModuleLoader__.load({
             },
           },
           h('span', { className: 'acc-spend__dot', 'data-state': stale ? 'stale' : 'live', 'aria-hidden': true }),
-          ready
+          ready && shown
             ? h(
                 React.Fragment,
                 null,
-                h('span', { className: 'acc-spend__value' }, dollars(data.today.usd)),
+                h('span', { className: 'acc-spend__value' }, dollars(shown.usd)),
                 h('span', { className: 'acc-spend__sep', 'aria-hidden': true }, '·'),
-                h('span', { className: 'acc-spend__php' }, peso(data.today.php)),
+                h('span', { className: 'acc-spend__php' }, peso(shown.php)),
               )
             : h('span', { className: 'acc-spend__value' }, '—'),
         ),

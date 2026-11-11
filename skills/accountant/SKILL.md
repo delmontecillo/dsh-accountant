@@ -48,14 +48,51 @@ Add `--limit <n>` to change how many rows print. Defaults are 7 days, 6 weeks,
 
 The Session header shows the same numbers without a command: a chip in the
 right-hand utilities seat (the row with the mode switch, above the Chat and
-Trajectory tabs), reading **$ today · ₱ today**. Clicking it opens the day,
-week, and month figures in both currencies, plus the predicted month end. It
-refreshes every minute.
+Trajectory tabs), reading the tracked key's spend today as **$ · ₱** — today's
+overall spend only when no key is configured. Clicking it opens that key's
+today, week, and month figures in both currencies, plus its predicted month end.
+It refreshes every minute.
+
+The panel is key-scoped: its rows and prediction cover the active key's window,
+not the machine's whole history. The CLI keeps the overall tables and adds the
+key lines, so use the CLI when the question is about total spend and the panel
+when it is about this key.
 
 So when the user asks "where do I see this", point at that chip. The chip reads
 a read-only `GET /accountant/spend` route served by this plugin and priced with
 the same library the CLI uses — if the two ever disagreed, that would be a bug,
 not a rounding difference.
+
+## Which key it tracks
+
+The usage is DSH's, and DSH spends on one DeepSeek key at a time. The counter
+resolves that key the way DSH does — the launch environment first, then
+`<DSH_HOME>/.credentials.yaml` — and keeps only a 12-character SHA-256
+fingerprint of it, never the key itself.
+
+The first time a fingerprint is seen, it opens a usage window for that key; when
+the key is rotated, the old window freezes and a new one starts. Every run
+prints the active key and what that key has spent:
+
+```
+Key       2c900c644833 · DSH credential store · counted since 2026-11-11 15:00
+Key spend 1.4M tokens · $0.63 · ₱39.06 · 22 requests
+```
+
+Windows begin on a whole UTC hour because the cached usage buckets are hourly: a
+key first seen at 14:51 counts from 15:00, and nothing from before the key
+existed is attributed to it. Older usage stays in the normal day/week/month
+tables; it is simply not claimed as this key's. Once more than one key has been
+seen, a `Per key` table lists every window.
+
+The timeline is `<DSH_HOME>/accountant.keys.json` — fingerprints and first-seen
+times only. Delete it to restart attribution from the next run.
+
+The header panel is scoped the same way: its today, week, month, and predicted
+month-end rows cover this key's window, and the prediction projects the key's
+own daily rate from the days it has existed — noisy while the key is young. The
+CLI keeps the overall tables and adds the key lines, so it remains the place to
+ask what the whole machine spent.
 
 ## Read the output correctly
 
@@ -103,7 +140,9 @@ as an invoice:
   not a ceiling.
 - Search and Fetch API calls are metered per request by DeepSeek, not per
   token, and are outside this count entirely.
-- Anything done outside DSH on the same API key is invisible.
+- Anything done outside DSH on the same API key is invisible. When the key is
+  dedicated to DSH, the key line is the whole spend on that key; when it is
+  shared with another app, it is only DSH's share.
 - A session log still being written is picked up on the next run. The live
   session is always slightly behind.
 

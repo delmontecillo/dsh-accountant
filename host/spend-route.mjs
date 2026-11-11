@@ -15,6 +15,7 @@
  */
 
 import { summarize } from '../skills/accountant/scripts/lib/aggregate.mjs'
+import { attachKeyUsage } from '../skills/accountant/scripts/lib/api-key.mjs'
 import { loadConfig } from '../skills/accountant/scripts/lib/config.mjs'
 import { DEFAULT_FX, DEFAULT_HOLIDAYS, PEAK_RATES } from '../skills/accountant/scripts/lib/pricing.mjs'
 import { collectUsage, defaultCachePath, resolveDataDir } from '../skills/accountant/scripts/lib/session-store.mjs'
@@ -49,6 +50,23 @@ function snapshot(model) {
       forecast: totals(summary.month.forecast),
     },
     next30: totals(summary.trailing.next30),
+    key: model.key === null
+      ? null
+      : {
+          fingerprint: model.key.fingerprint,
+          source: model.key.source,
+          since: new Date(model.key.since).toISOString(),
+          totals: totals(model.key.totals),
+          summary: model.key.summary
+            ? {
+                today: totals(model.key.summary.today),
+                week: totals(model.key.summary.week),
+                month: totals(model.key.summary.month),
+                forecast: totals(model.key.summary.forecast),
+                daysInMonth: model.summary.month.daysInMonth,
+              }
+            : null,
+        },
   }
 }
 
@@ -88,6 +106,7 @@ async function compute() {
     holidays: settings.holidays,
     rates: settings.rates,
   })
+  await attachKeyUsage(model, files, { dataDir, ...settings })
   return snapshot(model)
 }
 
