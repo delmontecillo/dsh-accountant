@@ -130,3 +130,25 @@ test('a tracked key renders as its own line and keeps its window in JSON', () =>
   assert.equal(json.key.since, '2026-11-11T07:00:00.000Z')
   assert.equal(json.key.totals.php, 27.9)
 })
+
+test('the session table lists each session with its folder and tag', () => {
+  const model = modelFixture()
+  model.sessions[0].tag = 'work'
+
+  const text = renderText(model, { group: 'session', limit: 10 })
+  assert.match(text, /Per session/)
+  assert.match(text, /work/)
+  assert.match(text, /₱/)
+  assert.doesNotMatch(text, /NaN/)
+
+  const md = renderMarkdown(model, { group: 'session', limit: 10 })
+  assert.match(md, /## Per session/)
+  assert.match(md, /\| Folder \| Tag \| Range \| Tokens \| USD \| PHP \|/)
+
+  const csv = renderCsv(model, { group: 'session' })
+  assert.match(csv, /^folder,tag,from,to,tokens_input/)
+
+  const json = toJson(model)
+  assert.equal(json.sessions[0].id, 'session-1')
+  assert.equal(json.sessions[0].tag, 'work')
+})

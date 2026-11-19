@@ -14,17 +14,21 @@
  * @module dsh-accountant/spend-route
  */
 
-import { summarize } from '../skills/accountant/scripts/lib/aggregate.mjs'
+import { sessionTotals, summarize } from '../skills/accountant/scripts/lib/aggregate.mjs'
 import { attachKeyUsage, resolveActiveKey } from '../skills/accountant/scripts/lib/api-key.mjs'
-import { loadConfig } from '../skills/accountant/scripts/lib/config.mjs'
+import { loadConfig, normalizeTags } from '../skills/accountant/scripts/lib/config.mjs'
 import { DEFAULT_FX, DEFAULT_HOLIDAYS, PEAK_RATES, tariffAt } from '../skills/accountant/scripts/lib/pricing.mjs'
 import { collectUsage, defaultCachePath, resolveDataDir } from '../skills/accountant/scripts/lib/session-store.mjs'
+import { loadSessionTags, loadTagAliases, moveSessionTag, normalizeTag, resolveTag, saveSessionTag } from '../skills/accountant/scripts/lib/session-tags.mjs'
 
 export const SPEND_PATH = '/accountant/spend'
+export const TAG_PATH = '/accountant/tag'
+export const MOVE_PATH = '/accountant/tag/move'
 export const BALANCE_URL = 'https://api.deepseek.com/user/balance'
 
 const TTL_MS = 20_000
 const BALANCE_TTL_MS = 60_000
+const MAX_BODY_BYTES = 4_096
 
 function totals(bucket) {
   return {
@@ -97,23 +101,67 @@ async function settingsFor(dataDir) {
     fx: { ...DEFAULT_FX, rate, asOf: config.fxAsOf ?? DEFAULT_FX.asOf },
     holidays: Array.isArray(config.holidays) ? new Set(config.holidays) : DEFAULT_HOLIDAYS,
     rates: config.models ?? PEAK_RATES,
+    tags: normalizeTags(config.tags),
   }
 }
 
-async function compute() {
+/** All-time spend grouped by tag; untagged sessions still get a row. */
+export function tagRollup(sessions) {
+  const rows = new Map()
+  for (const session of sessions) {
+    const tag = session.tag ?? 'untagged'
+    const row = rows.get(tag) ?? { tag, sessions: 0, tokens: 0, usd: 0, php: 0, requests: 0 }
+    row.sessions += 1
+    row.tokens += session.tokens.total
+    row.usd += session.usd
+    row.php += session.php
+    row.requests += session.requests
+    rows.set(tag, row)
+  }
+  return [...rows.values()].sort((a, b) => b.usd - a.usd)
+}
+
+/** One session's row, or null when no log carries that id. */
+function sessionRow(files, sessionId, settings, sessionTags, tagAliases) {
+  const file = files.find((entry) => entry.sessionId === sessionId)
+  if (file === undefined) return null
+  const [row] = sessionTotals([file], {
+    tz: settings.tz,
+    fxRate: settings.fx.rate,
+    holidays: settings.holidays,
+    rates: settings.rates,
+    tags: settings.tags,
+    sessionTags,
+    tagAliases,
+  })
+  return row ?? null
+}
+
+async function compute(sessionId) {
   const dataDir = resolveDataDir()
   const settings = await settingsFor(dataDir)
+  const sessionTags = await loadSessionTags(dataDir)
+  const tagAliases = await loadTagAliases(dataDir)
   const { files } = await collectUsage({ dataDir, cachePath: defaultCachePath(dataDir) })
   const model = summarize(files, {
     tz: settings.tz,
     fx: settings.fx,
     holidays: settings.holidays,
     rates: settings.rates,
+    tags: settings.tags,
+    sessionTags,
+    tagAliases,
   })
   await attachKeyUsage(model, files, { dataDir, ...settings })
   model.balance = await fetchBalance(dataDir)
   model.tariff = tariffSnapshot(settings.holidays)
-  return snapshot(model)
+  const body = snapshot(model)
+  body.session = sessionId === null ? null : sessionRow(files, sessionId, settings, sessionTags, tagAliases)
+  body.tagOptions = [...new Set(
+    [...Object.keys(settings.tags), ...Object.values(sessionTags)].map((tag) => resolveTag(tag, tagAliases)),
+  )].sort()
+  body.byTag = tagRollup(model.sessions)
+  return body
 }
 
 /**
@@ -163,23 +211,133 @@ function tariffSnapshot(holidays) {
  *
  * @returns {() => void} disposer that removes the route
  */
-export function registerSpendRoute(ctx) {
-  let cached = null
-  let cachedAt = 0
-  let pending = null
+const spendCache = new Map()
+const spendPending = new Map()
 
-  const resource = async () => {
+export function registerSpendRoute(ctx) {
+  const resource = async (request) => {
     try {
-      const now = Date.now()
-      if (cached !== null && now - cachedAt < TTL_MS) return json(cached)
-      pending ??= compute().finally(() => { pending = null })
-      cached = await pending
-      cachedAt = Date.now()
-      return json(cached)
+      const raw = new URL(request.url).searchParams.get('session')
+      const sessionId = typeof raw === 'string' && raw.length > 0 && raw.length <= 128 ? raw : null
+      const key = sessionId ?? ''
+      const hit = spendCache.get(key)
+      if (hit !== undefined && Date.now() - hit.at < TTL_MS) return json(hit.body)
+      let job = spendPending.get(key)
+      if (job === undefined) {
+        job = compute(sessionId).finally(() => { spendPending.delete(key) })
+        spendPending.set(key, job)
+      }
+      const body = await job
+      if (spendCache.size > 20) spendCache.clear()
+      spendCache.set(key, { at: Date.now(), body })
+      return json(body)
     } catch (error) {
       return json({ error: String(error?.message ?? error) }, 503)
     }
   }
 
   return ctx.webServer.register({ kind: 'exact', path: SPEND_PATH, resource })
+}
+
+function sendJson(res, status, body, headers = {}) {
+  res.writeHead(status, {
+    'content-type': 'application/json; charset=utf-8',
+    'cache-control': 'no-store',
+    'x-content-type-options': 'nosniff',
+    ...headers,
+  })
+  res.end(JSON.stringify(body))
+}
+
+/** Read a small JSON body; a larger one is refused rather than buffered. */
+function readBody(req) {
+  return new Promise((resolve, reject) => {
+    let size = 0
+    const chunks = []
+    req.on('data', (chunk) => {
+      size += chunk.length
+      if (size > MAX_BODY_BYTES) {
+        req.destroy()
+        reject(new Error('body too large'))
+        return
+      }
+      chunks.push(chunk)
+    })
+    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')))
+    req.on('error', reject)
+  })
+}
+
+/** Same-origin only: a cross-site POST carries a different Origin host. */
+function sameOrigin(req) {
+  const origin = req.headers.origin
+  if (origin === undefined) return true
+  try {
+    return new URL(origin).host === req.headers.host
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Register the tag write route. A per-session tag set here outranks the
+ * folder tag and survives restarts in `accountant.session-tags.json`.
+ *
+ * @returns {() => void} disposer that removes the route
+ */
+export function registerTagRoute(ctx) {
+  const handler = async (req, res) => {
+    if (!sameOrigin(req)) return sendJson(res, 403, { error: 'origin not allowed' })
+    if (req.method !== 'POST') return sendJson(res, 405, { error: 'method not allowed' }, { allow: 'POST' })
+    if (!String(req.headers['content-type'] ?? '').startsWith('application/json')) {
+      return sendJson(res, 415, { error: 'application/json required' })
+    }
+    try {
+      const parsed = JSON.parse(await readBody(req))
+      const sessionId = typeof parsed?.session === 'string' ? parsed.session : ''
+      if (sessionId === '' || sessionId.length > 128) return sendJson(res, 400, { error: 'invalid session' })
+      if (parsed.tag !== null && parsed.tag !== undefined && typeof parsed.tag !== 'string') {
+        return sendJson(res, 400, { error: 'invalid tag' })
+      }
+      const raw = typeof parsed.tag === 'string' ? parsed.tag : null
+      if (raw !== null && raw.trim() !== '' && normalizeTag(raw) === null) {
+        return sendJson(res, 400, { error: 'tag must be 1-40 printable characters' })
+      }
+      const tag = await saveSessionTag(resolveDataDir(), sessionId, raw)
+      spendCache.clear()
+      return sendJson(res, 200, { ok: true, tag })
+    } catch {
+      return sendJson(res, 400, { error: 'bad request' })
+    }
+  }
+  return ctx.webServer.register({ kind: 'exact', path: TAG_PATH, handler })
+}
+
+/**
+ * Register the tag-move route: retire `from` by moving its sessions to `to`.
+ * Folder-derived tags move through the alias recorded by `moveSessionTag`.
+ *
+ * @returns {() => void} disposer that removes the route
+ */
+export function registerMoveRoute(ctx) {
+  const handler = async (req, res) => {
+    if (!sameOrigin(req)) return sendJson(res, 403, { error: 'origin not allowed' })
+    if (req.method !== 'POST') return sendJson(res, 405, { error: 'method not allowed' }, { allow: 'POST' })
+    if (!String(req.headers['content-type'] ?? '').startsWith('application/json')) {
+      return sendJson(res, 415, { error: 'application/json required' })
+    }
+    try {
+      const parsed = JSON.parse(await readBody(req))
+      const from = normalizeTag(parsed?.from)
+      const to = normalizeTag(parsed?.to)
+      if (from === null || to === null) return sendJson(res, 400, { error: 'from and to must be tags' })
+      if (from === to) return sendJson(res, 400, { error: 'from and to must differ' })
+      const result = await moveSessionTag(resolveDataDir(), from, to)
+      spendCache.clear()
+      return sendJson(res, 200, { ok: true, ...result })
+    } catch {
+      return sendJson(res, 500, { error: 'cannot update the tags file' })
+    }
+  }
+  return ctx.webServer.register({ kind: 'exact', path: MOVE_PATH, handler })
 }

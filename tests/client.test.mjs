@@ -79,7 +79,7 @@ function expand(node) {
   return { ...node, props: { ...node.props, children } }
 }
 
-async function loadBundle({ payload, ok = true }) {
+async function loadBundle({ payload, ok = true, sessionId = 'session-1' }) {
   const calls = []
   const runtime = createRuntime()
   const document = fakeDocument()
@@ -116,7 +116,11 @@ async function loadBundle({ payload, ok = true }) {
   /** Render the mounted component, run its effects, and settle. */
   const render = async () => {
     runtime.beginRender()
-    const tree = expand(registrations[0].render({}))
+    const registration = registrations[0]
+    const injected = typeof registration.options.inject === 'function'
+      ? registration.options.inject(sessionId)
+      : {}
+    const tree = expand(registration.render({ ...injected }))
     runtime.flushEffects()
     await tick()
     return tree
@@ -176,9 +180,38 @@ test('the chip fetches the host endpoint same-origin, uncached', async () => {
   const { calls, render } = await loadBundle({ payload: PAYLOAD })
   await render()
   assert.equal(calls.length, 1)
-  assert.equal(calls[0].url, '/accountant/spend')
+  assert.equal(calls[0].url, '/accountant/spend?session=session-1')
   assert.equal(calls[0].init.credentials, 'same-origin')
   assert.equal(calls[0].init.cache, 'no-store')
+})
+
+test('the panel shows this session with its tag', async () => {
+  const payload = {
+    ...PAYLOAD,
+    session: {
+      id: 'session-1',
+      cwd: '/Users/derk/work/acme',
+      label: 'acme',
+      tag: 'work',
+      from: '2026-11-11',
+      to: '2026-11-11',
+      tokens: { input: 1_000_000, cacheRead: 0, cacheWrite: 0, output: 0, total: 1_000_000 },
+      usd: 0.3,
+      php: 18.6,
+      requests: 2,
+    },
+  }
+  const { render } = await loadBundle({ payload })
+  await render()
+  const loaded = await render()
+
+  const button = find(loaded, (node) => node.type === 'button')
+  button.props.onClick()
+  const text = textOf(await render())
+  assert.match(text, /This session/)
+  assert.match(text, /₱18\.60/)
+  assert.match(text, /\$0\.30/)
+  assert.match(text, /work/)
 })
 
 test('the chip shows today in both currencies after the first fetch', async () => {
@@ -238,6 +271,118 @@ test('a peak tariff reads Peak on the chip', async () => {
   const { render } = await loadBundle({ payload })
   await render()
   assert.match(textOf(await render()), /Peak/)
+})
+
+test('the panel can tag the session it is showing', async () => {
+  const payload = {
+    ...PAYLOAD,
+    tagOptions: ['personal', 'work'],
+    session: {
+      id: 'session-1',
+      cwd: '/Users/derk/work/acme',
+      label: 'acme',
+      folderTag: 'work',
+      ownTag: null,
+      tag: 'work',
+      tagSource: 'folder',
+      from: '2026-11-11',
+      to: '2026-11-11',
+      tokens: { input: 0, cacheRead: 0, cacheWrite: 0, output: 0, total: 1 },
+      usd: 0.3,
+      php: 18.6,
+      requests: 2,
+    },
+  }
+  const { calls, render } = await loadBundle({ payload })
+  await render()
+  const loaded = await render()
+
+  // The tag reaches the pill only while the panel is expanded.
+  const closedButton = find(loaded, (node) => node.type === 'button')
+  assert.doesNotMatch(textOf(closedButton), /work/)
+  closedButton.props.onClick()
+
+  const open = await render()
+  assert.match(textOf(find(open, (node) => node.type === 'button')), /work/)
+
+  const select = find(open, (node) => node.type === 'select')
+  assert.notEqual(select, null)
+  const values = (select.props.children ?? []).map((child) => child.props?.value)
+  assert.deepEqual(values, ['', 'personal', 'work', '__new'])
+
+  await select.props.onChange({ target: { value: '__new' } })
+  const withInput = await render()
+  const input = find(withInput, (node) => node.type === 'input')
+  assert.notEqual(input, null)
+
+  await input.props.onKeyDown({ key: 'Enter', preventDefault() {}, target: { value: 'passion' } })
+  const post = calls.find((call) => call.init && call.init.method === 'POST')
+  assert.equal(post.url, '/accountant/tag')
+  assert.deepEqual(JSON.parse(post.init.body), { session: 'session-1', tag: 'passion' })
+})
+
+test('the panel opens a modal with spend by tag', async () => {
+  const payload = {
+    ...PAYLOAD,
+    byTag: [
+      { tag: 'personal', sessions: 2, tokens: 3_000_000, usd: 1.2, php: 74.4, requests: 10 },
+      { tag: 'work', sessions: 1, tokens: 1_000_000, usd: 0.3, php: 18.6, requests: 5 },
+    ],
+  }
+  const { render } = await loadBundle({ payload })
+  await render()
+  const loaded = await render()
+  find(loaded, (node) => node.type === 'button').props.onClick()
+
+  const open = await render()
+  const more = find(open, (node) => node.type === 'button' && String(node.props.className).includes('acc-spend__more'))
+  assert.notEqual(more, null)
+  more.props.onClick()
+
+  const withModal = await render()
+  const dialog = find(withModal, (node) => node.props && node.props['aria-label'] === 'Spend by tag')
+  assert.notEqual(dialog, null)
+  const text = textOf(dialog)
+  assert.match(text, /Spend by tag/)
+  assert.match(text, /personal/)
+  assert.match(text, /work/)
+  assert.match(text, /\$1\.20/)
+  assert.match(text, /₱74\.40/)
+
+  const close = find(dialog, (node) => node.type === 'button' && node.props['aria-label'] === 'Close')
+  close.props.onClick()
+  const closed = await render()
+  assert.equal(find(closed, (node) => node.props && node.props['aria-label'] === 'Spend by tag'), null)
+})
+
+test('the modal can move one tag to another', async () => {
+  const payload = {
+    ...PAYLOAD,
+    tagOptions: ['personal', 'work'],
+    byTag: [
+      { tag: 'personal', sessions: 2, tokens: 3_000_000, usd: 1.2, php: 74.4, requests: 10 },
+      { tag: 'work', sessions: 1, tokens: 1_000_000, usd: 0.3, php: 18.6, requests: 5 },
+    ],
+  }
+  const { calls, render } = await loadBundle({ payload })
+  await render()
+  const loaded = await render()
+  find(loaded, (node) => node.type === 'button').props.onClick()
+
+  const open = await render()
+  find(open, (node) => node.type === 'button' && String(node.props.className).includes('acc-spend__more')).props.onClick()
+
+  const withModal = await render()
+  const move = find(
+    withModal,
+    (node) => node.type === 'select' && String(node.props['aria-label']).startsWith('Move personal'),
+  )
+  assert.notEqual(move, null)
+
+  move.props.onChange({ target: { value: 'work' } })
+  const post = calls.find((call) => call.init && call.init.method === 'POST')
+  assert.equal(post.url, '/accountant/tag/move')
+  assert.deepEqual(JSON.parse(post.init.body), { from: 'personal', to: 'work' })
 })
 
 test('an unreachable endpoint shows a dash, never a made-up number', async () => {

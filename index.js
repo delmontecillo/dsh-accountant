@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises'
 import { dirname } from 'node:path'
 import { fileURLToPath } from 'node:url'
-import { registerSpendRoute } from './host/spend-route.mjs'
+import { registerMoveRoute, registerSpendRoute, registerTagRoute } from './host/spend-route.mjs'
 
 /**
  * Skill provider for `accountant`.
@@ -107,6 +107,15 @@ export function apply(ctx) {
   // A deferred inject scope activates only where the service actually mounts.
   if (typeof ctx.inject !== 'function') return
   ctx.inject(['webServer'], (scope) => {
-    scope.effect(() => registerSpendRoute(scope), 'accountant: spend route')
+    scope.effect(() => {
+      const disposers = [
+        registerSpendRoute(scope),
+        registerTagRoute(scope),
+        registerMoveRoute(scope),
+      ]
+      return () => {
+        for (const dispose of disposers) dispose()
+      }
+    }, 'accountant: spend and tag routes')
   })
 }

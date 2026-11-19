@@ -86,6 +86,18 @@ function monthRow(month) {
   return [month.key, fmtInt(month.dayCount), fmtTokens(month.tokens.total), fmtUsd(month.usd), fmtPhp(month.php)]
 }
 
+function sessionRow(session) {
+  return [
+    session.label,
+    session.tag ?? '—',
+    `${session.from.slice(5)} → ${session.to.slice(5)}`,
+    fmtTokens(session.tokens.total),
+    fmtUsd(session.usd),
+    fmtPhp(session.php),
+    fmtInt(session.requests),
+  ]
+}
+
 /** Serialisable view of the active key and the keys seen before it. */
 function plainKey(key) {
   const iso = (ms) => (Number.isFinite(ms) ? new Date(ms).toISOString() : null)
@@ -145,6 +157,18 @@ export function toJson(model) {
     days: model.days.map(plainDay),
     weeks: model.weeks.map(plainBucket),
     months: model.months.map(plainBucket),
+    sessions: model.sessions.map((session) => ({
+      id: session.id,
+      cwd: session.cwd,
+      label: session.label,
+      tag: session.tag,
+      from: session.from,
+      to: session.to,
+      tokens: session.tokens,
+      usd: session.usd,
+      php: session.php,
+      requests: session.requests,
+    })),
     models: model.models,
     unknownModels: model.unknownModels,
     key: model.key === null || model.key === undefined ? null : plainKey(model.key),
@@ -231,34 +255,44 @@ export function renderText(model, meta = {}) {
     lines.push('')
   }
 
-  const rows = group === 'week'
-    ? tail(model.weeks, limit).map(weekRow)
-    : group === 'month'
-      ? tail(model.months, limit).map(monthRow)
-      : group === 'all'
-        ? []
-        : tail(model.days, limit).map(dayRow)
+  if (group === 'session') {
+    lines.push('Per session')
+    lines.push(table(
+      ['folder', 'tag', 'range', 'tokens', 'USD', 'PHP', 'requests'],
+      model.sessions.slice(0, limit).map(sessionRow),
+      ['left', 'left', 'left', 'right', 'right', 'right', 'right'],
+    ))
+    lines.push('')
+  } else {
+    const rows = group === 'week'
+      ? tail(model.weeks, limit).map(weekRow)
+      : group === 'month'
+        ? tail(model.months, limit).map(monthRow)
+        : group === 'all'
+          ? []
+          : tail(model.days, limit).map(dayRow)
 
-  if (group === 'all') {
-    for (const [title, bucketRows, headers] of [
-      ['Per day', tail(model.days, limit).map(dayRow), ['day', 'tokens', 'USD', 'PHP', 'requests']],
-      ['Per week', tail(model.weeks, limit).map(weekRow), ['week', 'range', 'tokens', 'USD', 'PHP']],
-      ['Per month', tail(model.months, limit).map(monthRow), ['month', 'days', 'tokens', 'USD', 'PHP']],
-    ]) {
+    if (group === 'all') {
+      for (const [title, bucketRows, headers] of [
+        ['Per day', tail(model.days, limit).map(dayRow), ['day', 'tokens', 'USD', 'PHP', 'requests']],
+        ['Per week', tail(model.weeks, limit).map(weekRow), ['week', 'range', 'tokens', 'USD', 'PHP']],
+        ['Per month', tail(model.months, limit).map(monthRow), ['month', 'days', 'tokens', 'USD', 'PHP']],
+      ]) {
+        lines.push(title)
+        lines.push(table(headers, bucketRows, headers.map((header) => (header === 'day' || header === 'week' || header === 'month' || header === 'range' ? 'left' : 'right'))))
+        lines.push('')
+      }
+    } else if (rows.length > 0) {
+      const title = group === 'week' ? 'Per week' : group === 'month' ? 'Per month' : 'Per day'
+      const headers = group === 'week'
+        ? ['week', 'range', 'tokens', 'USD', 'PHP']
+        : group === 'month'
+          ? ['month', 'days', 'tokens', 'USD', 'PHP']
+          : ['day', 'tokens', 'USD', 'PHP', 'requests']
       lines.push(title)
-      lines.push(table(headers, bucketRows, headers.map((header) => (header === 'day' || header === 'week' || header === 'month' || header === 'range' ? 'left' : 'right'))))
+      lines.push(table(headers, rows, headers.map((header) => (header === 'day' || header === 'week' || header === 'month' || header === 'range' ? 'left' : 'right'))))
       lines.push('')
     }
-  } else if (rows.length > 0) {
-    const title = group === 'week' ? 'Per week' : group === 'month' ? 'Per month' : 'Per day'
-    const headers = group === 'week'
-      ? ['week', 'range', 'tokens', 'USD', 'PHP']
-      : group === 'month'
-        ? ['month', 'days', 'tokens', 'USD', 'PHP']
-        : ['day', 'tokens', 'USD', 'PHP', 'requests']
-    lines.push(title)
-    lines.push(table(headers, rows, headers.map((header) => (header === 'day' || header === 'week' || header === 'month' || header === 'range' ? 'left' : 'right'))))
-    lines.push('')
   }
 
   if (model.unknownModels.length > 0) {
@@ -322,8 +356,18 @@ export function renderMarkdown(model, meta = {}) {
     md.push('')
   }
 
-  const section = group === 'week' ? 'Per week' : group === 'month' ? 'Per month' : 'Per day'
-  if (group === 'week') {
+  const section = group === 'session' ? 'Per session' : group === 'week' ? 'Per week' : group === 'month' ? 'Per month' : 'Per day'
+  if (group === 'session') {
+    md.push(`## ${section}`)
+    md.push(mdTable(['Folder', 'Tag', 'Range', 'Tokens', 'USD', 'PHP'], model.sessions.slice(0, limit).map((session) => [
+      session.label,
+      session.tag ?? '—',
+      `${session.from} → ${session.to}`,
+      fmtTokens(session.tokens.total),
+      fmtUsd(session.usd),
+      fmtPhp(session.php),
+    ])))
+  } else if (group === 'week') {
     md.push(`## ${section}`)
     md.push(mdTable(['Week', 'Range', 'Tokens', 'USD', 'PHP'], tail(model.weeks, limit).map((week) => [week.key, `${week.from} → ${week.to}`, fmtTokens(week.tokens.total), fmtUsd(week.usd), fmtPhp(week.php)])))
   } else if (group === 'month') {
@@ -341,7 +385,26 @@ export function renderMarkdown(model, meta = {}) {
 /** CSV of the requested group, header row included. */
 export function renderCsv(model, meta = {}) {
   const group = meta.group ?? 'day'
-  const header = ['period', 'from', 'to', 'tokens_input', 'tokens_cache_read', 'tokens_cache_write', 'tokens_output', 'tokens_total', 'usd', 'php', 'requests']
+  const columns = ['tokens_input', 'tokens_cache_read', 'tokens_cache_write', 'tokens_output', 'tokens_total', 'usd', 'php', 'requests']
+  if (group === 'session') {
+    const header = ['folder', 'tag', 'from', 'to', ...columns]
+    const rows = model.sessions.map((session) => [
+      session.label,
+      session.tag ?? '',
+      session.from,
+      session.to,
+      session.tokens.input,
+      session.tokens.cacheRead,
+      session.tokens.cacheWrite,
+      session.tokens.output,
+      session.tokens.total,
+      session.usd.toFixed(6),
+      session.php.toFixed(4),
+      session.requests,
+    ])
+    return `${[header, ...rows].map((row) => row.join(',')).join('\n')}\n`
+  }
+  const header = ['period', 'from', 'to', ...columns]
   const rows = group === 'month'
     ? model.months.map((month) => [month.key, month.from, month.to, month.tokens.input, month.tokens.cacheRead, month.tokens.cacheWrite, month.tokens.output, month.tokens.total, month.usd.toFixed(6), month.php.toFixed(4), month.requests])
     : group === 'week'

@@ -9,11 +9,12 @@
  */
 
 import { readFile } from 'node:fs/promises'
+import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { DEFAULT_FX, PRICING_AS_OF } from './pricing.mjs'
 import { resolveDataDir } from './session-store.mjs'
 
-export const GROUPS = ['day', 'week', 'month', 'all']
+export const GROUPS = ['day', 'week', 'month', 'all', 'session']
 export const FORMATS = ['text', 'json', 'markdown', 'csv']
 
 export const USAGE = `Accountant — token spend per day, week, and month, priced in USD and PHP.
@@ -22,7 +23,7 @@ Usage
   node accountant.mjs [options]
 
 Options
-  --group <day|week|month|all>  table to print (default: day)
+  --group <day|week|month|all|session>  table to print (default: day)
   --limit <n>                   rows per table (default: 7 day, 6 week, 6 month)
   --range <from..to>            restrict totals and tables to a local date range
   --since <YYYY-MM-DD>          start of the range
@@ -50,7 +51,12 @@ Key tracking
 Config file
   <dataDir>/accountant.config.json
   { "tz": "Asia/Manila", "rate": 62.0, "fxAsOf": "2026-11-11",
-    "holidays": ["2026-11-30"], "models": { "deepseek-flash": { "cacheHit": 0.006, "cacheMiss": 0.3, "output": 1.2 } } }
+    "holidays": ["2026-11-30"],
+    "tags": { "work": ["~/acme"], "personal": ["~/Documents/projects"] },
+    "models": { "deepseek-flash": { "cacheHit": 0.006, "cacheMiss": 0.3, "output": 1.2 } } }
+
+Tags map a folder prefix (or a list of them) to a label. A session with no
+matching prefix is shown under its folder name.
 
 Prices are DeepSeek list prices as of ${PRICING_AS_OF}; off-peak is always half of peak.
 `
@@ -155,6 +161,24 @@ export async function loadConfig(dataDir) {
 }
 
 /**
+ * Validate the `tags` folder map: `{ label: [prefix, ...] }`, with `~` expanded
+ * and trailing slashes removed so prefix matching stays exact.
+ */
+export function normalizeTags(raw) {
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return {}
+  const tags = {}
+  for (const [label, prefixes] of Object.entries(raw)) {
+    if (label === '' || !Array.isArray(prefixes)) continue
+    const cleaned = prefixes
+      .filter((prefix) => typeof prefix === 'string' && prefix !== '')
+      .map((prefix) => (prefix === '~' ? homedir() : prefix.startsWith('~/') ? join(homedir(), prefix.slice(2)) : prefix))
+      .map((prefix) => prefix.replace(/\/+$/, ''))
+    if (cleaned.length > 0) tags[label] = cleaned
+  }
+  return tags
+}
+
+/**
  * Merge defaults, config file, environment, and flags into one settings object.
  */
 export function resolveSettings(options, config) {
@@ -172,8 +196,7 @@ export function resolveSettings(options, config) {
 
   const rate = options.rate ?? envRate ?? config.rate ?? DEFAULT_FX.rate
   const group = options.group ?? config.group ?? 'day'
-  const defaultLimit = group === 'day' ? 7 : 6
-
+  const defaultLimit = group === 'day' ? 7 : group === 'session' ? 10 : 6
   const holidays = Array.isArray(config.holidays)
     ? new Set(config.holidays.filter((day) => typeof day === 'string' && DATE.test(day)))
     : undefined
@@ -194,6 +217,7 @@ export function resolveSettings(options, config) {
     useCache: options.noCache !== true,
     clearCache: options.clearCache === true,
     rates: config.models,
+    tags: normalizeTags(config.tags),
     holidays,
     configPath: config.path,
   }

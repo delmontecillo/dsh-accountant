@@ -57,6 +57,8 @@ its predicted month end:
 ```
 ┌───────────────────────────────────┐
 │ Token spend          Asia/Manila  │
+│ This session              ₱27.90  │
+│ $0.45 · 1.5M tokens · work        │
 │ Today · 11-11             ₱27.90  │
 │ $0.45 · 1.5M tokens               │
 │ Week · 2026-W46           ₱33.48  │
@@ -82,6 +84,48 @@ spend estimate or its predictions.
 Those rows are the key's, not the machine's: Today, Week, Month, and the
 predicted month end are all scoped to the active key's window. With no key
 configured, the panel falls back to all recorded usage.
+
+### Sessions and tags
+
+Each session log is one session, and the panel's `This session` row is that
+log's own total — exact, not a guess from the newest file. The same rows come
+from `--group session`, one line per log with its folder, tag, date range,
+tokens, and cost.
+
+A tag is a folder prefix in `<DSH_HOME>/accountant.config.json`:
+
+```json
+"tags": {
+  "work": ["~/work", "~/Documents/acme"],
+  "personal": ["~/Documents/github-repositories/website-portfolio"],
+  "plugins": ["~/Documents/github-repositories/dsh-accountant",
+              "~/Documents/github-repositories/dsh-frieren-ui"]
+}
+```
+
+The longest matching prefix wins. A session whose folder matches nothing is
+shown under its folder name, so past sessions are already grouped without any
+configuration. Adding or changing tags reclassifies history on the next read;
+the panel picks it up on its next poll.
+
+Tag one session from the panel itself: open the chip and pick a tag from the
+**Tag** menu, or choose **+ New tag…** to add one in a new row. That writes
+`<DSH_HOME>/accountant.session-tags.json` (`{ version, tags }`, keyed by
+session id) and outranks the folder mapping; choosing the folder default clears
+the override. A saved tag joins the menu for later sessions. While the panel is
+open, the chip also shows the session's tag. The CLI reads the same file, so a
+tag set in the app appears in `--group session` on its next run. The write route
+accepts same-origin JSON POSTs only.
+
+Retiring a tag is done from the **Spend by tag** modal: each row has a
+**Move to…** menu. Choosing a destination rewrites that tag's explicit session
+tags and records an alias, so sessions that inherited the old tag from a folder
+follow it too. The file then carries `aliases` (`{ "old": "new" }`), which tag
+resolution follows (including chains).
+
+The panel's **Spend by tag** button opens a modal with the all-time totals per
+tag — sessions, tokens, USD, and PHP — so a tagged session shows up there next
+to its category.
 
 It polls once a minute, refreshes when opened, and shows `—` rather than a
 guess when the host is not answering. It reads a read-only, loopback-only
@@ -160,7 +204,7 @@ node skills/accountant/scripts/accountant.mjs
 
 | Flag | Purpose |
 |---|---|
-| `--group day\|week\|month\|all` | which table to print |
+| `--group day\|week\|month\|all\|session` | which table to print |
 | `--limit <n>` | rows per table |
 | `--range 2026-11-01..2026-11-11` | restrict to a window |
 | `--tz <zone>` | calendar timezone, default `Asia/Manila` |

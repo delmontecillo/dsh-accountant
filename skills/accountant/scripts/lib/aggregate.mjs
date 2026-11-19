@@ -10,6 +10,7 @@
 
 import { DAY_MS, HOUR_MS, addDays, daysInMonth, isoWeek, isoWeekday, localDate, zonedParts } from './calendar.mjs'
 import { DEFAULT_FX, DEFAULT_HOLIDAYS, PEAK_RATES, costOf, isPeakUtc, toPhp } from './pricing.mjs'
+import { resolveTag } from './session-tags.mjs'
 
 function emptyDay(date) {
   return {
@@ -148,6 +149,54 @@ export function windowTotals(files, options = {}) {
   return { ...totalOf(days), days: days.length }
 }
 
+/** Longest matching folder prefix for a session's cwd; null when nothing matches. */
+export function tagForCwd(cwd, tags) {
+  if (typeof cwd !== 'string' || cwd === '' || tags === undefined) return null
+  let match = null
+  for (const [tag, prefixes] of Object.entries(tags)) {
+    for (const prefix of prefixes) {
+      if ((cwd === prefix || cwd.startsWith(`${prefix}/`)) && (match === null || prefix.length > match.length)) {
+        match = { tag, length: prefix.length }
+      }
+    }
+  }
+  return match?.tag ?? null
+}
+
+/** Short folder name used when no tag matches. */
+export function folderLabel(cwd) {
+  if (typeof cwd !== 'string' || cwd === '') return 'unknown'
+  return cwd.split(/[\\/]/).filter(Boolean).at(-1) ?? cwd
+}
+
+/** One row per session log, newest first. An explicit session tag outranks the folder tag. */
+export function sessionTotals(files, options = {}) {
+  const { tags = {}, sessionTags = {}, tagAliases = {}, since, until } = options
+  const rows = []
+  for (const file of files) {
+    const { days } = buildDays([file], options)
+    const kept = filterRange(days, { since, until })
+    if (kept.length === 0) continue
+    const id = file.sessionId ?? file.path
+    const folderTag = tagForCwd(file.cwd, tags)
+    const ownTag = sessionTags[id] ?? null
+    const rawTag = ownTag ?? folderTag
+    rows.push({
+      id,
+      cwd: file.cwd ?? null,
+      label: folderLabel(file.cwd),
+      folderTag,
+      ownTag,
+      tag: rawTag === null ? null : resolveTag(rawTag, tagAliases),
+      tagSource: ownTag !== null ? 'session' : folderTag !== null ? 'folder' : null,
+      from: kept[0].date,
+      to: kept.at(-1).date,
+      ...totalOf(kept),
+    })
+  }
+  return rows.sort((a, b) => b.to.localeCompare(a.to) || b.usd - a.usd)
+}
+
 function project(total, elapsed, span) {
   if (elapsed <= 0) return emptyTotal()
   const factor = span / elapsed
@@ -182,6 +231,9 @@ export function summarize(files, options = {}) {
     rates = PEAK_RATES,
     holidays = DEFAULT_HOLIDAYS,
     fx = DEFAULT_FX,
+    tags = {},
+    sessionTags = {},
+    tagAliases = {},
   } = options
 
   const { days: allDays, unknownModels } = buildDays(files, { tz, rates, holidays, fxRate: fx.rate })
@@ -250,6 +302,7 @@ export function summarize(files, options = {}) {
     totals: totalOf(days),
     models: [...modelTotals.values()].sort((a, b) => b.usd - a.usd),
     unknownModels,
+    sessions: sessionTotals(files, { tz, rates, holidays, fxRate: fx.rate, tags, sessionTags, tagAliases, since, until }),
     summary: {
       today: { date: now.date, ...totalOf([today]) },
       week: {

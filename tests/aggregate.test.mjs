@@ -8,7 +8,7 @@ import {
   isoWeekday,
   localDate,
 } from '../skills/accountant/scripts/lib/calendar.mjs'
-import { buildDays, filterRange, summarize, windowTotals } from '../skills/accountant/scripts/lib/aggregate.mjs'
+import { buildDays, filterRange, folderLabel, sessionTotals, summarize, tagForCwd, windowTotals } from '../skills/accountant/scripts/lib/aggregate.mjs'
 
 function bucket({ input = 0, cacheRead = 0, cacheWrite = 0, output = 0, requests = 1 } = {}) {
   return { input, cacheRead, cacheWrite, output, requests }
@@ -169,4 +169,59 @@ test('a key window counts only the buckets inside it', () => {
   assert.equal(window.tokens.total, 2_000_000)
   assert.equal(window.requests, 1)
   assert.equal(window.days, 1)
+})
+
+test('a tag is the longest matching folder prefix', () => {
+  const tags = {
+    personal: ['/Users/derk'],
+    work: ['/Users/derk/work'],
+  }
+  assert.equal(tagForCwd('/Users/derk/work/acme', tags), 'work')
+  assert.equal(tagForCwd('/Users/derk/notes', tags), 'personal')
+  assert.equal(tagForCwd('/tmp/other', tags), null)
+  assert.equal(tagForCwd('/Users/derk/work-other', tags), 'personal')
+  assert.equal(folderLabel('C:\\work\\acme'), 'acme')
+  assert.equal(folderLabel(null), 'unknown')
+})
+
+test('session totals are per log, tagged, and newest first', () => {
+  const files = [
+    sessionFile({ '2026-11-09': { 2: { 'deepseek-official/deepseek-flash': bucket({ input: 1_000_000 }) } } }, 'session-a'),
+    sessionFile({ '2026-11-10': { 2: { 'deepseek-official/deepseek-flash': bucket({ input: 1_000_000 }) } } }, 'session-b'),
+  ]
+  files[1].cwd = '/Users/derk/work/acme'
+
+  const rows = sessionTotals(files, {
+    tz: 'UTC',
+    fxRate: 62,
+    tags: { work: ['/Users/derk/work'] },
+    sessionTags: { 'session-a': 'passion' },
+  })
+  assert.equal(rows.length, 2)
+  assert.equal(rows[0].id, 'session-b')
+  assert.equal(rows[0].tag, 'work')
+  assert.equal(rows[0].tagSource, 'folder')
+  assert.equal(rows[0].label, 'acme')
+  assert.equal(rows[0].usd, 0.3)
+  assert.equal(rows[1].id, 'session-a')
+  assert.equal(rows[1].tag, 'passion')
+  assert.equal(rows[1].tagSource, 'session')
+})
+
+test('a tag alias is applied to both session and folder tags', () => {
+  const files = [
+    sessionFile({ '2026-11-10': { 2: { 'deepseek-official/deepseek-flash': bucket({ input: 1_000_000 }) } } }, 'session-a'),
+    sessionFile({ '2026-11-11': { 2: { 'deepseek-official/deepseek-flash': bucket({ input: 1_000_000 }) } } }, 'session-b'),
+  ]
+  files[0].cwd = '/Users/derk/work/acme'
+  files[1].cwd = '/Users/derk/notes'
+
+  const rows = sessionTotals(files, {
+    tz: 'UTC',
+    fxRate: 62,
+    tags: { work: ['/Users/derk/work'], personal: ['/Users/derk'] },
+    sessionTags: { 'session-b': 'passion' },
+    tagAliases: { passion: 'personal', work: 'personal' },
+  })
+  assert.deepEqual(rows.map((row) => row.tag), ['personal', 'personal'])
 })
