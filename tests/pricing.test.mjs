@@ -8,6 +8,7 @@ import {
   isPeakUtc,
   rateFor,
   resolveModel,
+  tariffAt,
   toPhp,
 } from '../skills/accountant/scripts/lib/pricing.mjs'
 
@@ -35,6 +36,25 @@ test('a Chinese public holiday is off-peak all day', () => {
   assert.equal(isPeakUtc('2026-10-01', 2, DEFAULT_HOLIDAYS), false)
   assert.equal(isPeakUtc('2026-10-01', 2, new Set()), true)
   assert.equal(isPeakUtc('2026-02-16', 7, DEFAULT_HOLIDAYS), false)
+})
+
+test('the tariff boundary is the next UTC hour that differs', () => {
+  const none = new Set()
+  assert.deepEqual(tariffAt(Date.parse('2026-11-11T03:10:00Z'), none), {
+    peak: true,
+    changesAt: Date.parse('2026-11-11T04:00:00Z'),
+  })
+  assert.deepEqual(tariffAt(Date.parse('2026-11-11T04:30:00Z'), none), {
+    peak: false,
+    changesAt: Date.parse('2026-11-11T06:00:00Z'),
+  })
+})
+
+test('a weekend stretches the boundary to Monday', () => {
+  assert.deepEqual(tariffAt(Date.parse('2026-11-13T12:00:00Z'), new Set()), {
+    peak: false,
+    changesAt: Date.parse('2026-11-16T01:00:00Z'),
+  })
 })
 
 test('off-peak costs exactly half of peak', () => {

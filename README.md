@@ -42,7 +42,7 @@ The Session header carries a live readout in its right-hand utilities seat —
 the same row as the mode switch, above the Chat/Trajectory tabs:
 
 ```
-  Accountant token usage plugin        $1.99 · ₱123.56   ⬤ Standard mode
+  Accountant token usage plugin   $1.99 · ₱123.56 · Off-peak   ⬤ Standard mode
   Chat   Trajectory   ⋯
 ```
 
@@ -66,9 +66,18 @@ its predicted month end:
 │ Predicted month end · 30 days     │
 │                          ₱558.00  │
 │ $9.00 · 30.0M tokens              │
+│ Remaining                 $21.11  │
+│ account balance                   │
 │ Estimate · ₱62.00 per USD · 339 sessions · key 2c900c64… │
 └───────────────────────────────────┘
 ```
+
+The chip names the current tariff — `Peak` or `Off-peak` — and its tooltip says
+when the next one starts. The panel also shows the DeepSeek account's remaining
+balance, fetched from `GET /user/balance` with the tracked key and cached for a
+minute; when that probe fails the row is simply absent and spend still renders.
+The balance is account-wide, not this key's share, and it is not part of the
+spend estimate or its predictions.
 
 Those rows are the key's, not the machine's: Today, Week, Month, and the
 predicted month end are all scoped to the active key's window. With no key

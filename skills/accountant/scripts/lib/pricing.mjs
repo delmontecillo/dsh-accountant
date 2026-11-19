@@ -66,6 +66,9 @@ export const DEFAULT_FX = {
 }
 
 const DAY_MS = 86_400_000
+const HOUR_MS = 3_600_000
+/** How far ahead a tariff boundary is searched; a long holiday can span a week. */
+const MAX_SCAN_HOURS = 24 * 10
 
 /** Expand `YYYY-MM-DD` inclusive ranges into every date they cover. */
 function expandRanges(ranges) {
@@ -100,6 +103,27 @@ export function isPeakUtc(day, hour, holidays = DEFAULT_HOLIDAYS) {
   const weekday = new Date(`${day}T00:00:00Z`).getUTCDay()
   if (weekday === 0 || weekday === 6) return false
   return PEAK_HOURS_UTC.some(([from, to]) => hour >= from && hour < to)
+}
+
+/**
+ * The tariff now and the instant the next one starts.
+ *
+ * Windows are whole UTC hours, so the boundary is the next hour whose tariff
+ * differs from the current one. `changesAt` is epoch milliseconds, or `null`
+ * when a holiday list covers the whole scan horizon.
+ */
+export function tariffAt(nowMs, holidays = DEFAULT_HOLIDAYS) {
+  const peakOf = (ms) => {
+    const date = new Date(ms)
+    return isPeakUtc(date.toISOString().slice(0, 10), date.getUTCHours(), holidays)
+  }
+  const peak = peakOf(nowMs)
+  let edge = Math.ceil(nowMs / HOUR_MS) * HOUR_MS
+  for (let hours = 0; hours < MAX_SCAN_HOURS; hours += 1) {
+    if (peakOf(edge) !== peak) return { peak, changesAt: edge }
+    edge += HOUR_MS
+  }
+  return { peak, changesAt: null }
 }
 
 /** Rate row in dollars per 1M tokens for one model at one tariff. */

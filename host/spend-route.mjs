@@ -15,14 +15,16 @@
  */
 
 import { summarize } from '../skills/accountant/scripts/lib/aggregate.mjs'
-import { attachKeyUsage } from '../skills/accountant/scripts/lib/api-key.mjs'
+import { attachKeyUsage, resolveActiveKey } from '../skills/accountant/scripts/lib/api-key.mjs'
 import { loadConfig } from '../skills/accountant/scripts/lib/config.mjs'
-import { DEFAULT_FX, DEFAULT_HOLIDAYS, PEAK_RATES } from '../skills/accountant/scripts/lib/pricing.mjs'
+import { DEFAULT_FX, DEFAULT_HOLIDAYS, PEAK_RATES, tariffAt } from '../skills/accountant/scripts/lib/pricing.mjs'
 import { collectUsage, defaultCachePath, resolveDataDir } from '../skills/accountant/scripts/lib/session-store.mjs'
 
 export const SPEND_PATH = '/accountant/spend'
+export const BALANCE_URL = 'https://api.deepseek.com/user/balance'
 
 const TTL_MS = 20_000
+const BALANCE_TTL_MS = 60_000
 
 function totals(bucket) {
   return {
@@ -50,6 +52,8 @@ function snapshot(model) {
       forecast: totals(summary.month.forecast),
     },
     next30: totals(summary.trailing.next30),
+    balance: model.balance,
+    tariff: model.tariff,
     key: model.key === null
       ? null
       : {
@@ -107,7 +111,51 @@ async function compute() {
     rates: settings.rates,
   })
   await attachKeyUsage(model, files, { dataDir, ...settings })
+  model.balance = await fetchBalance(dataDir)
+  model.tariff = tariffSnapshot(settings.holidays)
   return snapshot(model)
+}
+
+/**
+ * Normalize the balance endpoint's payload to the one account row the panel
+ * shows: the USD entry when the account reports several currencies.
+ */
+export function parseBalance(body) {
+  const rows = Array.isArray(body?.balance_infos) ? body.balance_infos : []
+  const row = rows.find((entry) => entry?.currency === 'USD') ?? rows[0]
+  const total = Number(row?.total_balance)
+  if (!Number.isFinite(total)) return null
+  return { currency: String(row.currency ?? ''), total }
+}
+
+let balanceCache = { at: 0, value: null }
+
+/**
+ * The account balance behind the active key, cached and optional: a failed
+ * probe leaves the spend readout intact and simply omits the row.
+ */
+async function fetchBalance(dataDir) {
+  if (Date.now() - balanceCache.at < BALANCE_TTL_MS) return balanceCache.value
+  const { key } = await resolveActiveKey({ dataDir })
+  let value = null
+  if (key !== null) {
+    try {
+      const response = await fetch(BALANCE_URL, {
+        headers: { authorization: `Bearer ${key}`, accept: 'application/json' },
+        signal: AbortSignal.timeout(3_000),
+      })
+      if (response.ok) value = parseBalance(await response.json())
+    } catch {
+      // Unreachable is not an error: the chip reports spend without a balance.
+    }
+  }
+  balanceCache = { at: Date.now(), value }
+  return value
+}
+
+function tariffSnapshot(holidays) {
+  const { peak, changesAt } = tariffAt(Date.now(), holidays)
+  return { peak, changesAt: changesAt === null ? null : new Date(changesAt).toISOString() }
 }
 
 /**

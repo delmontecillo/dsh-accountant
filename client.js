@@ -35,6 +35,8 @@ window.__ModuleLoader__.load({
       .acc-spend__value { font-variant-numeric: tabular-nums; }
       .acc-spend__sep { opacity: 0.4; }
       .acc-spend__php { font-variant-numeric: tabular-nums; opacity: 0.72; font-weight: 500; }
+      .acc-spend__tariff { font-size: 10.5px; opacity: 0.6; letter-spacing: 0.02em; }
+      .acc-spend__tariff[data-peak='true'] { color: #c9962c; opacity: 0.95; }
 
       .acc-spend__pop {
         position: absolute; top: calc(100% + 8px); right: 0; z-index: 40;
@@ -91,6 +93,21 @@ window.__ModuleLoader__.load({
       return `${(n / 1_000_000).toFixed(1)}M`;
     }
 
+    function money(balance) {
+      if (!balance) return '';
+      const value = Number(balance.total) || 0;
+      return balance.currency === 'USD' ? dollars(value) : `${balance.currency} ${value.toFixed(2)}`;
+    }
+
+    function clock(iso, timeZone) {
+      if (!iso) return '';
+      try {
+        return new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit', timeZone });
+      } catch {
+        return '';
+      }
+    }
+
     function Row({ label, bucket }) {
       if (!bucket) return null;
       return h(
@@ -141,6 +158,16 @@ window.__ModuleLoader__.load({
                       label: `Predicted month end · ${month.daysInMonth} days`,
                       bucket: forecastBucket,
                     }),
+                  )
+                : null,
+
+              data.balance
+                ? h(
+                    'div',
+                    { className: 'acc-spend__row' },
+                    h('span', { className: 'acc-spend__key' }, 'Remaining'),
+                    h('span', { className: 'acc-spend__peso' }, money(data.balance)),
+                    h('span', { className: 'acc-spend__sub' }, 'account balance'),
                   )
                 : null,
 
@@ -209,13 +236,15 @@ window.__ModuleLoader__.load({
         : null;
       const shown = keyBucket ?? (ready ? data.today : null);
 
-      const summary = ready
+      const summary = (ready
         ? keyBucket
           ? `This key · today ${dollars(keyBucket.usd)} · ${peso(keyBucket.php)}${data.key.summary ? ` · week ${peso(data.key.summary.week.php)} · month ${peso(data.key.summary.month.php)}` : ''} · all today ${dollars(data.today.usd)} · ${peso(data.today.php)}`
           : `Today ${dollars(data.today.usd)} · ${peso(data.today.php)} · Week ${peso(data.week.php)} · Month ${peso(data.month.php)} · predicted month end ${peso(data.month.forecast.php)}`
         : stale
           ? 'Accountant: no data from the accounting endpoint'
-          : 'Accountant: reading token spend';
+          : 'Accountant: reading token spend') + (ready && data.tariff
+            ? ` · ${data.tariff.peak ? 'peak' : 'off-peak'}${clock(data.tariff.changesAt, data.timezone) ? ` until ${clock(data.tariff.changesAt, data.timezone)}` : ''}`
+            : '');
 
       return h(
         'div',
@@ -242,6 +271,18 @@ window.__ModuleLoader__.load({
                 h('span', { className: 'acc-spend__value' }, dollars(shown.usd)),
                 h('span', { className: 'acc-spend__sep', 'aria-hidden': true }, '·'),
                 h('span', { className: 'acc-spend__php' }, peso(shown.php)),
+                ready && data.tariff
+                  ? h(
+                      React.Fragment,
+                      null,
+                      h('span', { className: 'acc-spend__sep', 'aria-hidden': true }, '·'),
+                      h(
+                        'span',
+                        { className: 'acc-spend__tariff', 'data-peak': data.tariff.peak ? 'true' : 'false' },
+                        data.tariff.peak ? 'Peak' : 'Off-peak',
+                      ),
+                    )
+                  : null,
               )
             : h('span', { className: 'acc-spend__value' }, '—'),
         ),

@@ -215,6 +215,31 @@ test('opening the chip reveals the week, the month, and the forecast', async () 
   assert.match(text, /339 sessions/)
 })
 
+test('the chip names the current tariff and the panel shows the remaining balance', async () => {
+  const payload = {
+    ...PAYLOAD,
+    tariff: { peak: false, changesAt: '2026-11-11T06:00:00.000Z' },
+    balance: { currency: 'USD', total: 21.11 },
+  }
+  const { render } = await loadBundle({ payload })
+  await render()
+  const loaded = await render()
+  assert.match(textOf(loaded), /Off-peak/)
+
+  const button = find(loaded, (node) => node.type === 'button')
+  button.props.onClick()
+  const text = textOf(await render())
+  assert.match(text, /Remaining/)
+  assert.match(text, /\$21\.11/)
+})
+
+test('a peak tariff reads Peak on the chip', async () => {
+  const payload = { ...PAYLOAD, tariff: { peak: true, changesAt: null } }
+  const { render } = await loadBundle({ payload })
+  await render()
+  assert.match(textOf(await render()), /Peak/)
+})
+
 test('an unreachable endpoint shows a dash, never a made-up number', async () => {
   const { render } = await loadBundle({ payload: null, ok: false })
   await render()
